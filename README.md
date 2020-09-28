@@ -41,23 +41,30 @@ The steps in the flow:
 
 Configuration is done via a YAML file called config.yaml in the project root.
 
+### Secrets
+
+The Socrata token and DSN secrets are expected to be provided as environment variables.
+
+```bash
+SOCRATA_TOKEN=H3lljlkl43232jl
+DSN=postgresql://user_name:user_pass@localhost:5432/db_name
+```
+
 ### Flow configuration
 
 * domain: the path to the Socrata instance (e.g. "data.lacity.org")
-* token: a valid client token on that instance
-* dsn: "postgresql://311_user:311_pass@localhost:5433/311_db"
 * dask: setting this to True will run the download steps in parallel
+* datasets: a dictionary of years and Socrata dataset keys
 
 ### Data configuration
 
-* since: will only load records change since this date
-* datasets: a dictionary of years and Socrata dataset keys
+* years: the years to be loaded
+* since: will only load records change since this date (note that if since is specified it will load updated data for ALL years)
 * fields: a dictionary of fields and their Postgres data type (note that this will assume varchar unless specified otherwise)
 * the key to be used to manage inserts/updates (e.g. "srnumber")
 
 ## To-dos/Next steps
 
-* Store the database connection as secrets/env variables
 * Allow all data fields/attributes to be configured in YAML
 * Parallelize the loading step
 * Remove the need to store/load from CSV files

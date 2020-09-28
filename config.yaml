@@ -1,9 +1,7 @@
 flow:
-    domain: "data.lacity.org"
-    token: "***"
-    dsn: "***"
+    mode: full
     dask: False
-data:
+    domain: data.lacity.org
     datasets:
         - "2020": "rq3b-xjk8"
         - "2019": "pvft-t768"
@@ -11,29 +9,33 @@ data:
         - "2017": "d4vt-q4t5"
         - "2016": "ndkd-k878"
         - "2015": "ms7h-a45h"
+data:
     fields:
-        - "srnumber"
-        - "requesttype"
-        - "status"
-        - "actiontaken"
-        - "createddate"
-        - "updateddate"
-        - "servicedate"
-        - "closeddate"
-        - "requestsource"
-        - "anonymous"
-        - "mobileos"
-        - "owner"
-        - "nc": "integer"
-        - "ncname"
-        - "policeprecinct"
-        - "apc"
-        - "assignto"
-        - "cd": "integer"
-        - "cdmember"
-        - "address"
-        - "zipcode"
-        - "latitude"
-        - "longitude"
-    key: "srnumber"
+        - srnumber
+        - requesttype
+        - status
+        - actiontaken
+        - createddate
+        - updateddate
+        - servicedate
+        - closeddate
+        - requestsource
+        - anonymous
+        - mobileos
+        - owner
+        - nc: integer
+        - ncname
+        - policeprecinct
+        - apc
+        - assignto
+        - cd: integer
+        - cdmember
+        - address
+        - zipcode
+        - latitude
+        - longitude
+    key: srnumber
+    years:
+        - "2020"
     since: "2020-09-20T01:39:13"
+    target: requests
