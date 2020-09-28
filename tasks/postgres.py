@@ -2,10 +2,9 @@ import os
 from os.path import join, dirname
 import glob
 
+import psycopg2
 import prefect
 from prefect.utilities.tasks import task
-import psycopg2
-
 
 DATA_FOLDER = join(dirname(dirname(__file__)), 'output')
 
@@ -53,17 +52,17 @@ def prep_load(result, dsn, fieldnames, db_reset):
 
 
 @task
-def load_data(result, dsn, mode, target):
+def load_data(result, datasets, dsn, mode, target):
     logger = prefect.context.get("logger")
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
 
-    if mode == 'full':
-        loading_table = target
-    else:
-        loading_table = 'temp_loading'
+    list_of_files = []
+    for item in datasets:
+        file = join(DATA_FOLDER, f"download_dataset-{mode}-{item}-{prefect.context.today}.csv")
+        if os.path.isfile(file):
+            list_of_files.append(file)
 
-    list_of_files = glob.glob(join(DATA_FOLDER, f"download_dataset-{mode}-*.csv"))
     for file in list_of_files:
 
         with open(join(DATA_FOLDER, file), 'r') as f:
@@ -72,7 +71,7 @@ def load_data(result, dsn, mode, target):
                     f"COPY temp_loading FROM STDIN WITH (FORMAT CSV, HEADER TRUE)",
                     f
                 )
-                logger.info(f"temp_loading table successfully loaded from {os.path.basename(file)}")
+                logger.info(f"Table 'temp_loading' successfully loaded from {os.path.basename(file)}")
             except (Exception, psycopg2.DatabaseError) as error:
                 logger.info("Error: %s" % error)
                 connection.rollback()
@@ -120,7 +119,7 @@ def complete_load(result, dsn, fieldnames, key, target, mode, db_reset):
     cursor.execute("SELECT COUNT(*) FROM temp_loading")
     output = cursor.fetchone()
     
-    logger.info(f"Insert/updating {target} table with {output[0]} new records")
+    logger.info(f"Insert/updating '{target}' table with {output[0]} new records")
     cursor.execute(insert_query)
     if db_reset is False or mode == "diff":
         logger.info(f"Updating {target} table with modified records")
@@ -128,12 +127,20 @@ def complete_load(result, dsn, fieldnames, key, target, mode, db_reset):
 
     connection.commit()
 
-    logger.info(f"{target} table successfully updated")
+    logger.info(f"Table '{target}' was successfully updated")
+    
+    if db_reset:
+        cursor.execute("TRUNCATE TABLE temp_loading")    
 
     cursor.execute(refresh_view_query)
     cursor.execute("UPDATE metadata SET last_pulled = NOW()")
     connection.commit()
     logger.info("Views successfully refreshed")
+
+    # need to have autocommit set for VACUUM to work
+    connection.autocommit = True
+    cursor.execute("VACUUM FULL ANALYZE")
+    logger.info("Database vacuumed and analyzed")
 
     cursor.close()
     connection.close()

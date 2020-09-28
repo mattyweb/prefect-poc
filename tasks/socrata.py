@@ -22,7 +22,8 @@ More information about how to use SoQL (the Socrata query language) is here:
 
 @task(max_retries=3, retry_delay=timedelta(seconds=10))
 def download_dataset(
-        dataset_key: str,
+        dataset,
+        mode: str,
         fieldnames,
         domain: str,
         token: str,
@@ -31,10 +32,14 @@ def download_dataset(
         batch_size: int = 100000
     ):
    
+    dataset_key = dataset
+
     # config for run 
     offset = 0
-    mode = "full" if since is None else "diff"
-    where = None if since is None else f"updateddate > '{datetime.strptime(since, '%Y-%m-%dT%H:%M:%S').isoformat()}'"
+    if mode == "full":
+        where = None
+    else:
+        where = None if since is None else f"updateddate > '{datetime.strptime(since, '%Y-%m-%dT%H:%M:%S').isoformat()}'"
     output_file = f"output/{prefect.context.task_name}-{mode}-{dataset_key}-{prefect.context.today}.csv"
     logger = prefect.context.get("logger")
 

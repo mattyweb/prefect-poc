@@ -1,3 +1,4 @@
+results/
 output/
 dask-worker-space/
 .vscode/

@@ -25,7 +25,7 @@ The engine managing the data ingestion process is [Prefect Core](https://www.pre
 In the "Prefect" idiom, there are [tasks](https://docs.prefect.io/core/concepts/tasks.html) which perform an action and are chained together into a [flow](https://docs.prefect.io/core/concepts/flows.html). Flows can be executed in a number of different ways, but this project is set up to run the flow as a python file via the command line:
 
 ```bash
-python flow.py
+DSN=[your DSN] SOCRATA_TOKEN=[your token] python flow.py
 ```
 
 The steps in the flow:
@@ -43,12 +43,7 @@ Configuration is done via a YAML file called config.yaml in the project root.
 
 ### Secrets
 
-The Socrata token and DSN secrets are expected to be provided as environment variables.
-
-```bash
-SOCRATA_TOKEN=H3lljlkl43232jl
-DSN=postgresql://user_name:user_pass@localhost:5432/db_name
-```
+The Socrata token (SOCRATA_TOKEN) and database URL (DSN) secrets are expected to be provided as environment variables.
 
 ### Flow configuration
 
@@ -65,6 +60,41 @@ DSN=postgresql://user_name:user_pass@localhost:5432/db_name
 
 ## To-dos/Next steps
 
-* Allow all data fields/attributes to be configured in YAML
-* Parallelize the loading step
+* Write flow results to database
+* Finish allow data types to be configured in YAML
+* Write tests
+* Parallelize the loading step(?)
 * Remove the need to store/load from CSV files
+
+## Helpful DB commands
+
+```sql
+select pg_size_pretty (pg_database_size('311_db'));
+
+select pg_size_pretty (pg_relation_size('requests'));
+select pg_size_pretty (pg_relation_size('temp_loading'));
+select pg_size_pretty (pg_relation_size('service_requests'));
+
+select pg_size_pretty (pg_indexes_size('requests'));
+select pg_size_pretty (pg_indexes_size('temp_loading'));
+select pg_size_pretty (pg_indexes_size('service_requests'));
+
+VACUUM FULL ANALYZE;
+
+SELECT
+    relname AS "relation",
+    pg_size_pretty ( pg_total_relation_size (C .oid) ) AS "total_size"
+FROM pg_class C
+LEFT JOIN pg_namespace N ON (N.oid = C .relnamespace)
+WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+AND C .relkind <> 'i'
+AND nspname !~ '^pg_toast'
+ORDER BY pg_total_relation_size (C .oid) DESC
+LIMIT 10;
+```
+
+To clear out the Redis cache of an existing API instance:
+
+```bash
+curl -X POST "http://localhost:5000/status/reset-cache" -H  "accept: application/json" -d ""
+```

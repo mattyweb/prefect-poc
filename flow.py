@@ -19,10 +19,13 @@ Move data from TEMP to requests table
 Update views
 """
 
-with Flow('Loading Socrata Data to Postgres', result=LocalResult()) as flow:
+with Flow(
+    'Loading Socrata Data to Postgres',
+    result=LocalResult(dir=os.path.join(os.path.dirname(__file__), "results"), validate_dir=True)
+    ) as flow:
     
     # parameters
-    dataset_key_list = Parameter("dataset_key_list")
+    datasets = Parameter("datasets")
     fieldnames = Parameter("fieldnames")
     since = Parameter("since", required=False)
     mode = Parameter("mode", default="diff")
@@ -36,14 +39,15 @@ with Flow('Loading Socrata Data to Postgres', result=LocalResult()) as flow:
     dsn = EnvVarSecret("DSN")
 
     result = socrata.download_dataset.map(
-        dataset_key=dataset_key_list,
+        dataset=datasets,
+        mode=unmapped(mode),
         fieldnames=unmapped(fieldnames),
         since=unmapped(since),
         domain=unmapped(domain),
         token=unmapped(token)
     )
     result = postgres.prep_load(result, dsn, fieldnames, db_reset)
-    result = postgres.load_data(result, dsn, mode, target)
+    result = postgres.load_data(result, datasets, dsn, mode, target)
     result = postgres.complete_load(result, dsn, fieldnames, key, target, mode, db_reset)
 
 
@@ -55,7 +59,7 @@ if __name__ == "__main__":
     mode = config['flow']['mode'].get() or 'diff'
     domain = config['flow']['domain'].get()
     dask = config['flow']['dask'].get(bool)
-    dataset_pairs = config['flow']['datasets'].as_pairs()
+    all_datasets = dict(config['flow']['datasets'].as_pairs())
 
     key = config['data']['key'].get()
     since = config['data']['since'].get()
@@ -66,13 +70,12 @@ if __name__ == "__main__":
 
     # use only year datasets if in full mode otherwise use all w/since
     if mode == 'full':
-        dataset_pairs = dict(dataset_pairs)
-        dataset_key_list = [dataset_pairs[year] for year in years]
+        run_datasets = dict((k, all_datasets[k]) for k in years)
     else:
-        dataset_key_list = list(dict(dataset_pairs).values())
+        run_datasets = all_datasets
 
     state = flow.run(
-        dataset_key_list=dataset_key_list,
+        datasets=list(run_datasets.values()),
         fieldnames=fieldnames,
         key=key,
         mode=mode,

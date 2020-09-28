@@ -1,5 +1,5 @@
 flow:
-    mode: full
+    mode: full  # full | diff (uses 'since' as start)
     dask: False
     domain: data.lacity.org
     datasets:
