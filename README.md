@@ -25,14 +25,27 @@ The engine managing the data ingestion process is [Prefect Core](https://www.pre
 
 In the "Prefect" idiom, there are [tasks](https://docs.prefect.io/core/concepts/tasks.html) which perform an action and are chained together into a [flow](https://docs.prefect.io/core/concepts/flows.html). Flows can be executed in a number of different ways, but this project is set up to run the flow as a python file via the command line:
 
-## Installation/Running
+## Running with Docker
+
+To load data into an API database using the Docker image
+
+* Build the 'prefectpoc' docker image
+* Run the docker image as follows:
+
+```bash
+# set the DSN as an environment variable
+export PREFECT__CONTEXT__SECRETS__DSN=postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB_NAME}
+# run the image interactively
+docker run --env PREFECT__CONTEXT__SECRETS__DSN -it prefectpoc
+```
+
+## Running the app locally
 
 To load data into an API database:
 
 * Download this project and cd into the project folder
 * Create a virtual environment for the project (e.g. pipenv --python 3.7)
 * Do a pip install of the dependencies from the requirements.txt
-* Get your socrata token and DSN handy
 * Run the flow as follows:
 
 ```bash
