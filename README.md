@@ -2,15 +2,16 @@
 
 This proof-of-concept represents a new, standalone version of a data ingestion pipeline that load data downloaded from Socrata into the 311 Data project Postgres database.
 
-## Installation/Running
+The pipeline can be used either to initially populate a new database with one or more years of data or it can be used to get only new or changed records since the last time the tool was run.
 
-```bash
-# download the project
-# from the project root
-pip install requirements.txt
-# add socrata token and dsn to config.yaml
-python flow.py
-```
+The steps in the data ingestion/update process:
+
+* Configure and start the flow
+* Download data (by year) from Socrata and save it to CSV files
+* Insert the downloaded data to a temporary table in Postgres
+* Move the data from the temporary to the requests table
+* Update views and vacuum the database
+* Write some metadata about the load
 
 ## Socrata
 
@@ -24,49 +25,55 @@ The engine managing the data ingestion process is [Prefect Core](https://www.pre
 
 In the "Prefect" idiom, there are [tasks](https://docs.prefect.io/core/concepts/tasks.html) which perform an action and are chained together into a [flow](https://docs.prefect.io/core/concepts/flows.html). Flows can be executed in a number of different ways, but this project is set up to run the flow as a python file via the command line:
 
+## Installation/Running
+
+To load data into an API database:
+
+* Download this project and cd into the project folder
+* Create a virtual environment for the project (e.g. pipenv --python 3.7)
+* Do a pip install of the dependencies from the requirements.txt
+* Get your socrata token and DSN handy
+* Run the flow as follows:
+
 ```bash
-DSN=[your DSN] SOCRATA_TOKEN=[your token] python flow.py
+export PREFECT__USER_CONFIG_PATH=./config.toml
+export PREFECT__CONTEXT__SECRETS__DSN=postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB_NAME}
+python flow.py
 ```
-
-The steps in the flow:
-
-* Configure and start the flow
-* Download data from Socrata
-* Insert the downloaded data to a temporary Postgres table
-* Move data from the temporary to requests table
-* Update views
-* Write some metadata about the load
 
 ## Configuration
 
-Configuration is done via a YAML file called config.yaml in the project root.
+Configuration is done via a TOML file called config.toml in the project root. This uses the Prefect mechanism for [configuration](https://docs.prefect.io/core/concepts/configuration.html#toml). The Prefect default is to look for this file in the USER home directory so a special environment variable (PREFECT__USER_CONFIG_PATH) needs to be set in order to discover this in the project root.
 
 ### Secrets
 
-The Socrata token (SOCRATA_TOKEN) and database URL (DSN) secrets are expected to be provided as environment variables.
+The database URL (DSN) secrets are expected to be provided as environment variables. This needs to follow the Prefect convention and be prefixed with 'PREFECT__CONTEXT__SECRETS__' in order for it to be treated by Prefect as a Secret.
 
 ### Flow configuration
 
+* mode: either *'full'* whether all records for the matching 'year' setting or *'diff'* whether to download new and updated records using the 'since' setting
 * domain: the path to the Socrata instance (e.g. "data.lacity.org")
 * dask: setting this to True will run the download steps in parallel
-* datasets: a dictionary of years and Socrata dataset keys
+* datasets: a dictionary of available years and Socrata dataset keys
 
 ### Data configuration
 
+* fields: a dictionary of fields and their Postgres data type (note that this will assume varchar unless specified otherwise)
+* key: the field to be used to manage inserts/updates (e.g. "srnumber")
+* target: the name of the table to be ultimately loaded (e.g. "requests")
 * years: the years to be loaded
 * since: will only load records change since this date (note that if since is specified it will load updated data for ALL years)
-* fields: a dictionary of fields and their Postgres data type (note that this will assume varchar unless specified otherwise)
-* the key to be used to manage inserts/updates (e.g. "srnumber")
 
 ## To-dos/Next steps
 
+* Get the last updated time from the database
 * Write flow results to database
 * Finish allow data types to be configured in YAML
 * Write tests
 * Parallelize the loading step(?)
 * Remove the need to store/load from CSV files
 
-## Helpful DB commands
+## Helpful Postgres commands to watch your database
 
 ```sql
 select pg_size_pretty (pg_database_size('311_db'));
@@ -79,8 +86,10 @@ select pg_size_pretty (pg_indexes_size('requests'));
 select pg_size_pretty (pg_indexes_size('temp_loading'));
 select pg_size_pretty (pg_indexes_size('service_requests'));
 
+-- free up space and update statistics
 VACUUM FULL ANALYZE;
 
+-- get the database objects by total size
 SELECT
     relname AS "relation",
     pg_size_pretty ( pg_total_relation_size (C .oid) ) AS "total_size"

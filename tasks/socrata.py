@@ -23,30 +23,29 @@ More information about how to use SoQL (the Socrata query language) is here:
 @task(max_retries=3, retry_delay=timedelta(seconds=10))
 def download_dataset(
         dataset,
-        mode: str,
-        fieldnames,
-        domain: str,
-        token: str,
         since: datetime = None,
         max_rows: int = 2000000,
         batch_size: int = 100000
     ):
    
-    dataset_key = dataset
-
     # config for run 
+    logger = prefect.context.get("logger")
+    fieldnames = list(prefect.config.data.fields.keys())
+    mode = prefect.config.mode
+    dataset_key = dataset
     offset = 0
+    
     if mode == "full":
         where = None
+        output_file = f"output/{dataset_key}-{mode}.csv"
     else:
-        where = None if since is None else f"updateddate > '{datetime.strptime(since, '%Y-%m-%dT%H:%M:%S').isoformat()}'"
-    output_file = f"output/{prefect.context.task_name}-{mode}-{dataset_key}-{prefect.context.today}.csv"
-    logger = prefect.context.get("logger")
+        where = None if since is None else f"updateddate > '{datetime.strptime(since, '%Y-%m-%dT%H:%M:%S').isoformat()}'"    
+        output_file = f"output/{dataset_key}-{mode}-{prefect.context.today}.csv"
 
     # create Socrata client
     client = Socrata(
-        domain,
-        token
+        prefect.config.socrata.host,
+        prefect.config.socrata.host
     )
 
     # start downloading Socrata dataset in batches
@@ -54,7 +53,6 @@ def download_dataset(
 
     while offset < max_rows:
         limit = min(batch_size, max_rows - offset)
-
         logger.info(f'Fetching {limit} rows with offset {offset}')
         
         rows = client.get(
@@ -66,9 +64,8 @@ def download_dataset(
         )
 
         if len(rows) > 0:
-
             if offset == 0:
-                # prepare output CSV
+                # prepare output CSV during the first batch pull
                 os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
                 with open(output_file, "w") as fd:
