@@ -1,7 +1,9 @@
+# Added stuff for project
 results/
 output/
 dask-worker-space/
 .vscode/
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

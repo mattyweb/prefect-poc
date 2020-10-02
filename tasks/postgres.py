@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 from os.path import join, dirname
 from typing import List
@@ -7,10 +8,23 @@ import prefect
 from prefect.utilities.tasks import task
 
 
+"""
+Interact with a Postgres database powering a 311 data API
+
+Works in 3 stages:
+- prepping the load
+- loading files to temp table
+- committing temp data to database
+"""
+
 DATA_FOLDER = join(dirname(dirname(__file__)), 'output')
 TEMP_TABLE = "temp_loading"
+MOST_RECENT_COLUMN = "updateddate"
 
 def infer_types(fields):
+    """
+    gets datatypes for unset fields
+    """
     return_fields = {}
     for key in fields.keys():
         if fields[key] == '':
@@ -27,15 +41,15 @@ def infer_types(fields):
 
 
 @task
-def get_last_updated():
+def get_last_updated() -> datetime:
     logger = prefect.context.get("logger")
-
+    target = prefect.config.data.target
     dsn = prefect.context.secrets["DSN"]
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
 
     # get last updated
-    query = "select max(updateddate) from requests"
+    query = f"select max({MOST_RECENT_COLUMN}) from {target}"
     cursor.execute(query)
     last_updated = cursor.fetchone()[0]
     connection.commit()
@@ -49,12 +63,16 @@ def get_last_updated():
 
 @task
 def prep_load():
+    """
+    creates the temp loading table if needed
+    and cleans it from last run data
+    cleans target table if configured
+    """
     logger = prefect.context.get("logger")
 
     dsn = prefect.context.secrets["DSN"]
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
-    logger.info("Database connection established")
 
     fields = infer_types(prefect.config.data.fields)
     db_reset = prefect.config.reset_db
@@ -76,51 +94,47 @@ def prep_load():
     connection.commit()
     cursor.close()
     connection.close()
-    logger.info("Database connection closed")
 
 
 @task
-def load_data(datasets: List[str]):
+def load_datafile(datafile: str):
+    """
+    Loads the temp table from a single data file
+    """
     logger = prefect.context.get("logger")
-    mode = prefect.config.mode
     dsn = prefect.context.secrets["DSN"]
 
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
-
-    list_of_files = []
-    for item in datasets:
-        if mode == "full":
-            file = join(DATA_FOLDER, f"{item}-{mode}.csv")
-        else:
-            file = join(DATA_FOLDER, f"{item}-{mode}-{prefect.context.today}.csv")
-
-        if os.path.isfile(file):
-            list_of_files.append(file)
-
-    for file in list_of_files:
-        
-        with open(join(DATA_FOLDER, file), 'r') as f:
+    
+    logger.info(f"Loading data from file: {datafile}")
+    try:
+        with open(join(DATA_FOLDER, datafile), 'r') as f:
             try:
                 cursor.copy_expert(
                     f"COPY {TEMP_TABLE} FROM STDIN WITH (FORMAT CSV, HEADER TRUE)",
                     f
                 )
-                logger.info(f"Table '{TEMP_TABLE}' successfully loaded from {os.path.basename(file)}")
+                connection.commit()
+                logger.info(f"Table '{TEMP_TABLE}' successfully loaded from {os.path.basename(datafile)}")
             except (Exception, psycopg2.DatabaseError) as error:
                 logger.info("Error: %s" % error)
                 connection.rollback()
                 cursor.close()
-
-    connection.commit()
+    except FileNotFoundError:
+        logger.info(f"No file ({datafile}). Skipping...")
 
     cursor.close()
     connection.close()
-    logger.info("Database connection closed")
 
 
 @task
 def complete_load():
+    """
+    Commit the data from the temp table to database
+    Does both insert and then updates to data
+    Does a database vacuum and analyze
+    """
     logger = prefect.context.get("logger")
     dsn = prefect.context.secrets["DSN"]
 
@@ -186,15 +200,16 @@ def complete_load():
         cursor.execute(update_query)
         rows_updated = cursor.fetchone()[0]
         connection.commit()
-        logger.info(f"{rows_updated:,} rows updated in table '{target}'")
+    else:
+        rows_updated = 0
+
+    logger.info(f"{rows_updated:,} rows updated in table '{target}'")
 
     # empty temp table if resetting the db
     if db_reset:
         cursor.execute(f"TRUNCATE TABLE {TEMP_TABLE}")    
 
     cursor.execute(refresh_view_query)
-    # TODO make generic/configurable
-    cursor.execute("UPDATE metadata SET last_pulled = NOW()")
     connection.commit()
     logger.info("Views successfully refreshed")
 
@@ -205,12 +220,21 @@ def complete_load():
 
     cursor.close()
     connection.close()
-    logger.info("Database connection closed")
+
+    return rows_inserted
 
 
 def log_to_database(task, old_state, new_state):
+    """
+    Write the output to database at the end of the flow
+    """
     if new_state.is_finished():
-        msg = "{0} finished with message \"{1}\"".format(task.name, new_state.message)
+        # {old_state.result}
+        result_dict = {}
+        for i in task.tasks:
+            result_dict[i.name] = new_state.result[i]._result.value
+
+        msg = f"\"{task.name}\" loaded [{result_dict['complete_load']:,}] records and finished with message \"{new_state.message}\""
 
         if new_state.is_successful():
             status = "INFO"

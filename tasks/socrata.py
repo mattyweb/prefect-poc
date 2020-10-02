@@ -1,12 +1,12 @@
 from datetime import timedelta, datetime
 import csv
 import os
-from urllib import parse
+import requests
 
 from sodapy import Socrata
-
 import prefect
 from prefect.utilities.tasks import task
+
 
 """
 This task will call Socrata and output the returned data in CSV format.
@@ -18,7 +18,6 @@ More information about how to use SoQL (the Socrata query language) is here:
     https://dev.socrata.com/docs/queries/
 
 """
-
 
 @task(max_retries=3, retry_delay=timedelta(seconds=10))
 def download_dataset(
@@ -34,12 +33,18 @@ def download_dataset(
     mode = prefect.config.mode
     dataset_key = dataset
     offset = 0
-    
+
+    # datetime.strptime(since, '%Y-%m-%dT%H:%M:%S')
+
+    # use config setting if not pulled from database
+    if since is None:
+        since = datetime.strptime(prefect.config.data.since, '%Y-%m-%dT%H:%M:%S')
+
     if mode == "full":
         where = None
         output_file = f"output/{dataset_key}-{mode}.csv"
     else:
-        where = None if since is None else f"updateddate > '{datetime.strptime(since, '%Y-%m-%dT%H:%M:%S').isoformat()}'"    
+        where = None if since is None else f"updateddate > '{since.isoformat()}'"    
         output_file = f"output/{dataset_key}-{mode}-{prefect.context.today}.csv"
 
     # create Socrata client
@@ -55,34 +60,39 @@ def download_dataset(
         limit = min(batch_size, max_rows - offset)
         logger.info(f'Fetching {limit} rows with offset {offset}')
         
-        rows = client.get(
-            dataset_key,
-            select=",".join(fieldnames),
-            limit=limit,
-            offset=offset,
-            where=where
-        )
+        try:
+            rows = client.get(
+                dataset_key,
+                select=",".join(fieldnames),
+                limit=limit,
+                offset=offset,
+                where=where
+            )
+            if len(rows) > 0:
+                if offset == 0:
+                    # prepare output CSV during the first batch pull
+                    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        if len(rows) > 0:
-            if offset == 0:
-                # prepare output CSV during the first batch pull
-                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                    with open(output_file, "w") as fd:
+                        writer = csv.DictWriter(fd, fieldnames)
+                        writer.writeheader()
 
-                with open(output_file, "w") as fd:
-                    writer = csv.DictWriter(fd, fieldnames)
-                    writer.writeheader()
+                logger.info(f'Adding {len(rows)} rows')
 
-            logger.info(f'Adding {len(rows)} rows')
+                # append batch to CSV file
+                with open(output_file, "a") as fd:
+                    writer = csv.DictWriter(fd, fieldnames)   
+                    writer.writerows(rows)
 
-            # append batch to CSV file
-            with open(output_file, "a") as fd:
-                writer = csv.DictWriter(fd, fieldnames)   
-                writer.writerows(rows)
+                offset += len(rows)
 
-            offset += len(rows)
+            if len(rows) < batch_size:
+                break
 
-        if len(rows) < batch_size:
-            break
+        except requests.exceptions.ReadTimeout:
+            logger.warn(f'Read timeout occurred during fetch. Continuing...')
 
     # wrap up
-    logger.info(f'{offset} total rows downloaded for dataset: {dataset_key}')
+    logger.info(f'{offset:,} total rows downloaded for dataset: {dataset_key}')
+
+    return os.path.basename(output_file)

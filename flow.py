@@ -1,27 +1,25 @@
 import os
-from tasks.postgres import complete_load, load_data, prep_load
 
 import prefect
 from prefect import Flow, Parameter
 from prefect.engine.results import LocalResult
-from prefect.utilities.edges import unmapped
 from prefect.engine.executors import LocalDaskExecutor, LocalExecutor
+from prefect.utilities.edges import unmapped
 
 from tasks import postgres, socrata
 
 
 """
-Configure the flow
-Run the flow
-Download data from Socrata
-Insert downloaded data to TEMP table
-Move data from TEMP to requests table
-Update views
+Flow: Loading Socrata Data to Postgres
+--------------------------------------
+This flow downloads data from the Socrata Open Data site and loads it 
+into a Postgres database.
+
+Behavior is configured in the config.toml
 """
 
-
 with Flow(
-        'Loading Socrata Data to Postgres',
+        'Loading Socrata data to Postgres',
         result=LocalResult(
             dir=os.path.join(os.path.dirname(__file__), "results"),
             validate_dir=True
@@ -30,25 +28,33 @@ with Flow(
     ) as flow:
     
     datasets = Parameter("datasets")
+    
+    # get last updated from database
     since = postgres.get_last_updated()
-    download = socrata.download_dataset.map(
+    # download dataset from Socrata
+    downloads = socrata.download_dataset.map(
         dataset=datasets,
         since=unmapped(since)
     )
+    # get the temp tables ready for load
     prep = postgres.prep_load()
-    load = postgres.load_data(datasets)
+    # load each downloaded file
+    load = postgres.load_datafile.map(
+        datafile=downloads
+    )
+    # commit new data to database and clean up
     complete = postgres.complete_load()
 
-    flow.add_edge(upstream_task=since, downstream_task=download)
-    flow.add_edge(upstream_task=download, downstream_task=prep)
+    # make sure prep runs before load
     flow.add_edge(upstream_task=prep, downstream_task=load)
+    # make sure load runs before complete
     flow.add_edge(upstream_task=load, downstream_task=complete)
 
 
 if __name__ == "__main__":
 
     dask = prefect.config.dask
-    mode = prefect.config.mode or 'diff'
+    mode = prefect.config.mode
     all_datasets = dict(prefect.config.socrata.datasets)
     years = list(prefect.config.data.years)
 

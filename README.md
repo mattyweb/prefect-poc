@@ -79,12 +79,7 @@ The database URL (DSN) secrets are expected to be provided as environment variab
 
 ## To-dos/Next steps
 
-* Get the last updated time from the database
-* Write flow results to database
-* Finish allow data types to be configured in YAML
-* Write tests
-* Parallelize the loading step(?)
-* Remove the need to store/load from CSV files
+* Clean up old CSV files
 
 ## Helpful Postgres commands to watch your database
 

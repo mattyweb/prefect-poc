@@ -1,13 +1,11 @@
-debug = true
-
 # mode can be "full" (uses datasets for "data.years") or "diff" (uses "data.since" as start across all datasets)
 mode = "full"
 
 # determines whether Dask should be used to parallelize the flow run
-dask = false
+dask = true
 
 # (!) WARNING: setting this to "true" will wipe out whatever is in the target table (e.g. 'requests')
-reset_db = false  
+reset_db = true  
 
 [api]
 server = "http://localhost:5000"
@@ -28,7 +26,8 @@ token = "6b5lwk1jHSQTgx7PAVFKOOdt2"
 key = "srnumber"
 target = "requests"
 years = [
-    "2020"
+    "2020",
+    "2019"
     ]
 since = "2020-09-20T01:39:13"
 
