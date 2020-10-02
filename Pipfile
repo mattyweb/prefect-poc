@@ -4,11 +4,13 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+pytest = "*"
 
 [packages]
 prefect = "*"
 sodapy = "*"
 psycopg2-binary = "*"
+pendulum = "*"
 
 [requires]
 python_version = "3.7"

@@ -1,40 +1,62 @@
 import os
 from os.path import join, dirname
-import glob
+from typing import List
 
 import psycopg2
 import prefect
 from prefect.utilities.tasks import task
 
+
 DATA_FOLDER = join(dirname(dirname(__file__)), 'output')
 TEMP_TABLE = "temp_loading"
 
-# TODO: make generic
-def infer_types(fieldnames):
-    fields = {}
-    for field in fieldnames:
-        if field[-4:] == 'date':
-            fields[field] = "timestamp without time zone"
-        elif field in {'nc', 'cd'}:
-            fields[field] = "integer"
-        elif field in {'latitude', 'longitude'}:
-            fields[field] = "double precision"
+def infer_types(fields):
+    return_fields = {}
+    for key in fields.keys():
+        if fields[key] == '':
+            if key[-4:] == 'date':
+                return_fields[key] = "timestamp without time zone"
+            elif key in {'latitude', 'longitude'}:
+                return_fields[key] = "double precision"
+            else:
+                return_fields[key] = "character varying"
         else:
-            fields[field] = "character varying"
-    return fields
+            return_fields[key] = fields[key]
+
+    return return_fields
 
 
 @task
-def prep_load(result):
+def get_last_updated():
     logger = prefect.context.get("logger")
-    dsn = prefect.context.secrets["DSN"]
 
+    dsn = prefect.context.secrets["DSN"]
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
 
+    # get last updated
+    query = "select max(updateddate) from requests"
+    cursor.execute(query)
+    last_updated = cursor.fetchone()[0]
+    connection.commit()
+
+    cursor.close()
+    connection.close()
+
+    logger.info(last_updated)
+    return last_updated
+
+
+@task
+def prep_load():
+    logger = prefect.context.get("logger")
+
+    dsn = prefect.context.secrets["DSN"]
+    connection = psycopg2.connect(dsn)
+    cursor = connection.cursor()
     logger.info("Database connection established")
 
-    fields = prefect.config.data.fields
+    fields = infer_types(prefect.config.data.fields)
     db_reset = prefect.config.reset_db
     target = prefect.config.data.target
 
@@ -45,9 +67,11 @@ def prep_load(result):
     """
     cursor.execute(query)
     cursor.execute(f"TRUNCATE TABLE {TEMP_TABLE}")
+    logger.info(f"'{TEMP_TABLE}' table truncated")
 
     if db_reset:
-            cursor.execute(f"TRUNCATE TABLE {target}")
+        cursor.execute(f"TRUNCATE TABLE {target}")
+        logger.info(f"'{target}' table truncated")
 
     connection.commit()
     cursor.close()
@@ -56,7 +80,7 @@ def prep_load(result):
 
 
 @task
-def load_data(result, datasets):
+def load_data(datasets: List[str]):
     logger = prefect.context.get("logger")
     mode = prefect.config.mode
     dsn = prefect.context.secrets["DSN"]
@@ -96,7 +120,7 @@ def load_data(result, datasets):
 
 
 @task
-def complete_load(result):
+def complete_load():
     logger = prefect.context.get("logger")
     dsn = prefect.context.secrets["DSN"]
 
@@ -108,25 +132,37 @@ def complete_load(result):
 
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
+    rows_inserted = 0 
+    rows_updated = 0
 
     insert_query = f"""
-        BEGIN;
-        INSERT INTO {target} (
-            {', '.join([f"{field}" for field in fieldnames])}
+        -- BEGIN;
+
+        WITH rows AS (
+            INSERT INTO {target} (
+                {', '.join([f"{field}" for field in fieldnames])}
+            )
+            SELECT *
+            FROM {TEMP_TABLE}
+            ON CONFLICT ({key}) 
+            DO NOTHING
+            RETURNING 1
         )
-        SELECT *
-        FROM {TEMP_TABLE}
-        ON CONFLICT ({key}) 
-        DO NOTHING;
-        COMMIT;
+        SELECT count(*) FROM rows;
+
+        -- COMMIT;
     """
 
     update_query = f"""
-        UPDATE {target}
-        SET
-            {', '.join([f"{field} = source.{field}" for field in fieldnames])}
-        FROM (SELECT * FROM {TEMP_TABLE}) AS source
-        WHERE {target}.{key} = source.{key};
+        WITH rows AS (
+            UPDATE {target}
+            SET
+                {', '.join([f"{field} = source.{field}" for field in fieldnames])}
+            FROM (SELECT * FROM {TEMP_TABLE}) AS source
+            WHERE {target}.{key} = source.{key}
+            RETURNING 1
+        )
+        SELECT count(*) FROM rows;    
     """
 
     # TODO make generic/configurable
@@ -134,19 +170,25 @@ def complete_load(result):
         REFRESH MATERIALIZED VIEW CONCURRENTLY service_requests;
     """
 
+    # count rows to be upserted
     cursor.execute(f"SELECT COUNT(*) FROM {TEMP_TABLE}")
-    output = cursor.fetchone()
+    rows_to_upsert = cursor.fetchone()[0]
+    logger.info(f"Insert/updating '{target}' table with {rows_to_upsert:,} new records")
     
-    logger.info(f"Insert/updating '{target}' table with {output[0]} new records")
+    # insert rows
     cursor.execute(insert_query)
-    if db_reset is False or mode == "diff":
-        logger.info(f"Updating {target} table with modified records")
-        cursor.execute(update_query)
-
+    rows_inserted = cursor.fetchone()[0]
     connection.commit()
+    logger.info(f"{rows_inserted:,} rows inserted in table '{target}'")
 
-    logger.info(f"Table '{target}' was successfully updated")
-    
+    # update rows if necessary
+    if db_reset is False or mode == "diff":
+        cursor.execute(update_query)
+        rows_updated = cursor.fetchone()[0]
+        connection.commit()
+        logger.info(f"{rows_updated:,} rows updated in table '{target}'")
+
+    # empty temp table if resetting the db
     if db_reset:
         cursor.execute(f"TRUNCATE TABLE {TEMP_TABLE}")    
 
@@ -164,3 +206,35 @@ def complete_load(result):
     cursor.close()
     connection.close()
     logger.info("Database connection closed")
+
+
+def log_to_database(task, old_state, new_state):
+    if new_state.is_finished():
+        msg = "{0} finished with message \"{1}\"".format(task.name, new_state.message)
+
+        if new_state.is_successful():
+            status = "INFO"
+        elif new_state.is_failed():
+            status = "ERROR"
+        else:
+            status = "WARN"
+
+        # log task results
+        logger = prefect.context.get("logger")
+        logger.info(msg)
+
+        # write task results to database
+        dsn = prefect.context.secrets["DSN"]
+        connection = psycopg2.connect(dsn)
+        cursor = connection.cursor()
+
+        insert_query = f"""
+            INSERT INTO log (status, message)
+            VALUES ('{status}', '{msg}')
+        """
+        cursor.execute(insert_query)
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+        return new_state

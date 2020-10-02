@@ -45,7 +45,7 @@ def download_dataset(
     # create Socrata client
     client = Socrata(
         prefect.config.socrata.host,
-        prefect.config.socrata.host
+        prefect.config.socrata.token
     )
 
     # start downloading Socrata dataset in batches

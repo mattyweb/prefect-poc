@@ -10,10 +10,10 @@ dask = false
 reset_db = false  
 
 [api]
-host = "localhost:5000"
+server = "http://localhost:5000"
 
 [socrata]
-host = "lacity.data.org"
+host = "data.lacity.org"
 token = "6b5lwk1jHSQTgx7PAVFKOOdt2"
 
 [socrata.datasets]
