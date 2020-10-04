@@ -64,7 +64,7 @@ The database URL (DSN) secrets are expected to be provided as environment variab
 
 ### Flow configuration
 
-* mode: either *'full'* whether all records for the matching 'year' setting or *'diff'* whether to download new and updated records using the 'since' setting
+* mode: either *'full'* whether all records for the matching 'year' setting or *'update'* whether to download new and updated records using the 'since' setting
 * domain: the path to the Socrata instance (e.g. "data.lacity.org")
 * dask: setting this to True will run the download steps in parallel
 * datasets: a dictionary of available years and Socrata dataset keys
@@ -79,7 +79,8 @@ The database URL (DSN) secrets are expected to be provided as environment variab
 
 ## To-dos/Next steps
 
-* Clean up old CSV files
+* Clean out old CSV files (weekly?)
+* Add Slack message on completion
 
 ## Helpful Postgres commands to watch your database
 

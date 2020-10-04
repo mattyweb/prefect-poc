@@ -52,9 +52,12 @@ with Flow(
 
 
 if __name__ == "__main__":
+    logger = prefect.context.get("logger")
 
     dask = prefect.config.dask
     mode = prefect.config.mode
+    reset_db = prefect.config.reset_db
+
     all_datasets = dict(prefect.config.socrata.datasets)
     years = list(prefect.config.data.years)
 
@@ -64,6 +67,7 @@ if __name__ == "__main__":
     else:
         run_datasets = all_datasets
 
+    logger.info(f"Starting \"{mode}\" flow for {', '.join(run_datasets.keys())} {'and resetting db' if reset_db else ''}")
     state = flow.run(
         datasets=list(run_datasets.values()),
         executor=LocalDaskExecutor() if dask else LocalExecutor()

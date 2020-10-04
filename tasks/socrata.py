@@ -31,10 +31,7 @@ def download_dataset(
     logger = prefect.context.get("logger")
     fieldnames = list(prefect.config.data.fields.keys())
     mode = prefect.config.mode
-    dataset_key = dataset
     offset = 0
-
-    # datetime.strptime(since, '%Y-%m-%dT%H:%M:%S')
 
     # use config setting if not pulled from database
     if since is None:
@@ -42,10 +39,10 @@ def download_dataset(
 
     if mode == "full":
         where = None
-        output_file = f"output/{dataset_key}-{mode}.csv"
+        output_file = f"output/{dataset}-{mode}.csv"
     else:
         where = None if since is None else f"updateddate > '{since.isoformat()}'"    
-        output_file = f"output/{dataset_key}-{mode}-{prefect.context.today}.csv"
+        output_file = f"output/{dataset}-{mode}-{prefect.context.today}.csv"
 
     # create Socrata client
     client = Socrata(
@@ -54,7 +51,7 @@ def download_dataset(
     )
 
     # start downloading Socrata dataset in batches
-    logger.info(f"Downloading dataset: {dataset_key}")
+    logger.info(f"Downloading dataset: {dataset}")
 
     while offset < max_rows:
         limit = min(batch_size, max_rows - offset)
@@ -62,7 +59,7 @@ def download_dataset(
         
         try:
             rows = client.get(
-                dataset_key,
+                dataset,
                 select=",".join(fieldnames),
                 limit=limit,
                 offset=offset,
@@ -93,6 +90,7 @@ def download_dataset(
             logger.warn(f'Read timeout occurred during fetch. Continuing...')
 
     # wrap up
-    logger.info(f'{offset:,} total rows downloaded for dataset: {dataset_key}')
+    logger.info(f'{offset:,} total rows downloaded for dataset: {dataset}')
 
+    # return the output file name for the next task
     return os.path.basename(output_file)

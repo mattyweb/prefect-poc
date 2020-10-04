@@ -174,6 +174,7 @@ def complete_load():
                 {', '.join([f"{field} = source.{field}" for field in fieldnames])}
             FROM (SELECT * FROM {TEMP_TABLE}) AS source
             WHERE {target}.{key} = source.{key}
+            AND {target}.updateddate != source.updateddate
             RETURNING 1
         )
         SELECT count(*) FROM rows;    
@@ -196,7 +197,7 @@ def complete_load():
     logger.info(f"{rows_inserted:,} rows inserted in table '{target}'")
 
     # update rows if necessary
-    if db_reset is False or mode == "diff":
+    if db_reset is False or mode != "full":
         cursor.execute(update_query)
         rows_updated = cursor.fetchone()[0]
         connection.commit()
