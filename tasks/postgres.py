@@ -253,10 +253,21 @@ def log_to_database(task, old_state, new_state):
         connection = psycopg2.connect(dsn)
         cursor = connection.cursor()
 
+        table_query = f"""
+            CREATE TABLE IF NOT EXISTS log (    
+                id SERIAL PRIMARY KEY,
+                status character varying DEFAULT 'INFO'::character varying,
+                message text,
+                created_time timestamp without time zone DEFAULT now()
+            );
+        """
+
         insert_query = f"""
             INSERT INTO log (status, message)
             VALUES ('{status}', '{msg}')
         """
+        cursor.execute(table_query)
+        connection.commit()
         cursor.execute(insert_query)
         connection.commit()
         cursor.close()

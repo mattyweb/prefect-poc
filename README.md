@@ -13,6 +13,12 @@ The steps in the data ingestion/update process:
 * Update views and vacuum the database
 * Write some metadata about the load
 
+## To-dos/Next steps
+
+* Add Slack message on completion
+* Clean out old CSV files (?)
+* Create better mocks for tests
+
 ## Socrata
 
 The data comes from the Los Angeles 311 system as exposed though a [Socrata](https://dev.socrata.com/) instance [hosted by the city](https://data.lacity.com).
@@ -25,7 +31,7 @@ The engine managing the data ingestion process is [Prefect Core](https://www.pre
 
 In the "Prefect" idiom, there are [tasks](https://docs.prefect.io/core/concepts/tasks.html) which perform an action and are chained together into a [flow](https://docs.prefect.io/core/concepts/flows.html). Flows can be executed in a number of different ways, but this project is set up to run the flow as a python file via the command line:
 
-## Running with Docker
+## Running Update with Docker
 
 To load data into an API database using the Docker image
 
@@ -37,6 +43,22 @@ To load data into an API database using the Docker image
 export PREFECT__CONTEXT__SECRETS__DSN=postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB_NAME}
 # run the image interactively
 docker run --env PREFECT__CONTEXT__SECRETS__DSN -it prefectpoc
+```
+
+## Running Initial Load with Docker
+
+Populating a new database from Socrata requires a few additional settings. They are found in the TOML
+file but the easiest way to provide them is using environment variables.
+
+```bash
+# set the DSN as an environment variable
+export PREFECT__CONTEXT__SECRETS__DSN=postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB_NAME}
+export PREFECT__MODE=full  # specify that this is a full data loadd
+export PREFECT__RESET_DB=true  # to wipe any existing requests data
+export PREFECT__DATA__YEARS=["2020","2019"]  # the years to load as a string list
+# run the image interactively
+docker run -e PREFECT__CONTEXT__SECRETS__DSN -e PREFECT__MODE -e PREFECT__RESET_DB -e PREFECT__DATA__YEARS -it prefectpoc
+# or do the above with an environment file and the --env-file argument
 ```
 
 ## Running the app locally
@@ -77,26 +99,12 @@ The database URL (DSN) secrets are expected to be provided as environment variab
 * years: the years to be loaded
 * since: will only load records change since this date (note that if since is specified it will load updated data for ALL years)
 
-## To-dos/Next steps
-
-* Clean out old CSV files (weekly?)
-* Add Slack message on completion
-
 ## Helpful Postgres commands to watch your database
 
 ```sql
 select pg_size_pretty (pg_database_size('311_db'));
-
 select pg_size_pretty (pg_relation_size('requests'));
-select pg_size_pretty (pg_relation_size('temp_loading'));
-select pg_size_pretty (pg_relation_size('service_requests'));
-
 select pg_size_pretty (pg_indexes_size('requests'));
-select pg_size_pretty (pg_indexes_size('temp_loading'));
-select pg_size_pretty (pg_indexes_size('service_requests'));
-
--- free up space and update statistics
-VACUUM FULL ANALYZE;
 
 -- get the database objects by total size
 SELECT
