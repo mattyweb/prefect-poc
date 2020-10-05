@@ -1,7 +1,8 @@
 from datetime import datetime
 import os
 from os.path import join, dirname
-from typing import List
+from typing import Dict
+import requests
 
 import psycopg2
 import prefect
@@ -21,7 +22,7 @@ DATA_FOLDER = join(dirname(dirname(__file__)), 'output')
 TEMP_TABLE = "temp_loading"
 MOST_RECENT_COLUMN = "updateddate"
 
-def infer_types(fields):
+def infer_types(fields: Dict[str, str]) -> Dict[str, str]:
     """
     gets datatypes for unset fields
     """
@@ -129,7 +130,7 @@ def load_datafile(datafile: str):
 
 
 @task
-def complete_load():
+def complete_load() -> Dict[str, int]:
     """
     Commit the data from the temp table to database
     Does both insert and then updates to data
@@ -222,7 +223,10 @@ def complete_load():
     cursor.close()
     connection.close()
 
-    return rows_inserted
+    return {
+        "inserted": rows_inserted,
+        "updated": rows_updated
+    }
 
 
 def log_to_database(task, old_state, new_state):
@@ -230,19 +234,27 @@ def log_to_database(task, old_state, new_state):
     Write the output to database at the end of the flow
     """
     if new_state.is_finished():
-        # {old_state.result}
+
         result_dict = {}
         for i in task.tasks:
             result_dict[i.name] = new_state.result[i]._result.value
 
-        msg = f"\"{task.name}\" loaded [{result_dict['complete_load']:,}] records and finished with message \"{new_state.message}\""
-
-        if new_state.is_successful():
-            status = "INFO"
-        elif new_state.is_failed():
+        if new_state.is_failed():
             status = "ERROR"
+            emoji = " :rage: "
+            msg = f"FAILURE: Something went wrong in {task.name}: \"{new_state.message}\""
+        elif new_state.is_successful():
+            status = "INFO"
+            emoji = " :grin: "
+            msg = f"""
+                \"{task.name}\" loaded [{result_dict['complete_load']['inserted']:,}] records,
+                updated [{result_dict['complete_load']['updated']:,}] records,
+                and finished with message \"{new_state.message}\""
+            """
         else:
             status = "WARN"
+            emoji = " :confused: "
+            msg = f"Something might have failed in {task.name}: {new_state.message}"
 
         # log task results
         logger = prefect.context.get("logger")
@@ -272,5 +284,9 @@ def log_to_database(task, old_state, new_state):
         connection.commit()
         cursor.close()
         connection.close()
+
+        slack_url = prefect.context.secrets["SLACK_HOOK"]
+        if slack_url:
+            requests.post(slack_url, json={"text": emoji + msg})
 
         return new_state
