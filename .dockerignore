@@ -1,3 +1,9 @@
+**/output/
+**/results/
+**/dask-worker-space/
+**/.github
+**/docs
+
 **/__pycache__
 **/.classpath
 **/.dockerignore
