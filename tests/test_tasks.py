@@ -7,7 +7,7 @@ from prefect.engine.state import Running
 from prefect.engine.result import Result
 from pendulum import parse
 
-from tasks import postgres, api, socrata
+from tasks import postgres, socrata
 
 
 def test_last_updated():

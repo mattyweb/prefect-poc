@@ -8,7 +8,6 @@ import psycopg2
 import prefect
 from prefect.utilities.tasks import task
 
-
 """
 Interact with a Postgres database powering a 311 data API
 
@@ -21,6 +20,7 @@ Works in 3 stages:
 DATA_FOLDER = join(dirname(dirname(__file__)), 'output')
 TEMP_TABLE = "temp_loading"
 MOST_RECENT_COLUMN = "updateddate"
+
 
 def infer_types(fields: Dict[str, str]) -> Dict[str, str]:
     """
@@ -107,7 +107,7 @@ def load_datafile(datafile: str):
 
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
-    
+
     logger.info(f"Loading data from file: {datafile}")
     try:
         with open(join(DATA_FOLDER, datafile), 'r') as f:
@@ -117,7 +117,8 @@ def load_datafile(datafile: str):
                     f
                 )
                 connection.commit()
-                logger.info(f"Table '{TEMP_TABLE}' successfully loaded from {os.path.basename(datafile)}")
+                logger.info(f"Table '{TEMP_TABLE}' successfully loaded "
+                            f"from {os.path.basename(datafile)}")
             except (Exception, psycopg2.DatabaseError) as error:
                 logger.info("Error: %s" % error)
                 connection.rollback()
@@ -147,7 +148,7 @@ def complete_load() -> Dict[str, int]:
 
     connection = psycopg2.connect(dsn)
     cursor = connection.cursor()
-    rows_inserted = 0 
+    rows_inserted = 0
     rows_updated = 0
 
     insert_query = f"""
@@ -159,7 +160,7 @@ def complete_load() -> Dict[str, int]:
             )
             SELECT *
             FROM {TEMP_TABLE}
-            ON CONFLICT ({key}) 
+            ON CONFLICT ({key})
             DO NOTHING
             RETURNING 1
         )
@@ -178,7 +179,7 @@ def complete_load() -> Dict[str, int]:
             AND {target}.updateddate != source.updateddate
             RETURNING 1
         )
-        SELECT count(*) FROM rows;    
+        SELECT count(*) FROM rows;
     """
 
     # TODO make generic/configurable
@@ -190,7 +191,7 @@ def complete_load() -> Dict[str, int]:
     cursor.execute(f"SELECT COUNT(*) FROM {TEMP_TABLE}")
     rows_to_upsert = cursor.fetchone()[0]
     logger.info(f"Insert/updating '{target}' table with {rows_to_upsert:,} new records")
-    
+
     # insert rows
     cursor.execute(insert_query)
     rows_inserted = cursor.fetchone()[0]
@@ -207,18 +208,19 @@ def complete_load() -> Dict[str, int]:
 
     logger.info(f"{rows_updated:,} rows updated in table '{target}'")
 
-    # empty temp table if resetting the db
-    if db_reset:
-        cursor.execute(f"TRUNCATE TABLE {TEMP_TABLE}")    
+    if rows_inserted > 0 or rows_updated > 0:
+        # empty temp table if resetting the db
+        if db_reset:
+            cursor.execute(f"TRUNCATE TABLE {TEMP_TABLE}")
 
-    cursor.execute(refresh_view_query)
-    connection.commit()
-    logger.info("Views successfully refreshed")
+        cursor.execute(refresh_view_query)
+        connection.commit()
+        logger.info("Views successfully refreshed")
 
-    # need to have autocommit set for VACUUM to work
-    connection.autocommit = True
-    cursor.execute("VACUUM FULL ANALYZE")
-    logger.info("Database vacuumed and analyzed")
+        # need to have autocommit set for VACUUM to work
+        connection.autocommit = True
+        cursor.execute("VACUUM FULL ANALYZE")
+        logger.info("Database vacuumed and analyzed")
 
     cursor.close()
     connection.close()
@@ -235,6 +237,8 @@ def log_to_database(task, old_state, new_state):
     """
     if new_state.is_finished():
 
+        logger = prefect.context.get("logger")
+
         result_dict = {}
         for i in task.tasks:
             result_dict[i.name] = new_state.result[i]._result.value
@@ -242,31 +246,27 @@ def log_to_database(task, old_state, new_state):
         if new_state.is_failed():
             status = "ERROR"
             emoji = " :rage: "
-            msg = f"FAILURE: Something went wrong in {task.name}: \"{new_state.message}\""
+            msg = f"FAILURE: Something went wrong in {task.name}: "\
+                f"\"{new_state.message}\""
         elif new_state.is_successful():
             status = "INFO"
             emoji = " :grin: "
-            msg = f"""
-                \"{task.name}\" loaded [{result_dict['complete_load']['inserted']:,}] records,
-                updated [{result_dict['complete_load']['updated']:,}] records,
-                and finished with message \"{new_state.message}\""
-            """
+            msg = f"\"{task.name}\" loaded "\
+                f"[{result_dict['complete_load']['inserted']:,}] records, "\
+                f"updated [{result_dict['complete_load']['updated']:,}] records, "\
+                f"and finished with message \"{new_state.message}\""
         else:
             status = "WARN"
             emoji = " :confused: "
             msg = f"Something might have failed in {task.name}: {new_state.message}"
-
-        # log task results
-        logger = prefect.context.get("logger")
-        logger.info(msg)
 
         # write task results to database
         dsn = prefect.context.secrets["DSN"]
         connection = psycopg2.connect(dsn)
         cursor = connection.cursor()
 
-        table_query = f"""
-            CREATE TABLE IF NOT EXISTS log (    
+        table_query = """
+            CREATE TABLE IF NOT EXISTS log (
                 id SERIAL PRIMARY KEY,
                 status character varying DEFAULT 'INFO'::character varying,
                 message text,
@@ -285,8 +285,15 @@ def log_to_database(task, old_state, new_state):
         cursor.close()
         connection.close()
 
-        slack_url = prefect.context.secrets["SLACK_HOOK"]
-        if slack_url:
-            requests.post(slack_url, json={"text": emoji + msg})
+        # try posting to Slack
+        try:
+            slack_url = prefect.context.secrets["SLACK_HOOK"]
+            if slack_url:
+                requests.post(slack_url, json={"text": emoji + msg})
+        except Exception as e:
+            logger.warn(f"Unable to post to Slack: {e}")
+
+        # log task results
+        logger.info(msg)
 
         return new_state

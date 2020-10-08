@@ -12,7 +12,7 @@ from tasks import postgres, socrata
 """
 Flow: Loading Socrata Data to Postgres
 --------------------------------------
-This flow downloads data from the Socrata Open Data site and loads it 
+This flow downloads data from the Socrata Open Data site and loads it
 into a Postgres database.
 
 Behavior is configured in the config.toml
@@ -25,10 +25,10 @@ with Flow(
             validate_dir=True
             ),
         state_handlers=[postgres.log_to_database]
-    ) as flow:
-    
+) as flow:
+
     datasets = Parameter("datasets")
-    
+
     # get last updated from database
     since = postgres.get_last_updated()
     # download dataset from Socrata
@@ -67,7 +67,8 @@ if __name__ == "__main__":
     else:
         run_datasets = all_datasets
 
-    logger.info(f"Starting \"{mode}\" flow for {', '.join(run_datasets.keys())} {'and resetting db' if reset_db else ''}")
+    logger.info(f"Starting \"{mode}\" flow for {', '.join(run_datasets.keys())}"
+                f" {'and resetting db' if reset_db else ''}")
     state = flow.run(
         datasets=list(run_datasets.values()),
         executor=LocalDaskExecutor() if dask else LocalExecutor()

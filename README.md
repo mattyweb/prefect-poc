@@ -11,13 +11,14 @@ The steps in the data ingestion/update process:
 * Insert the downloaded data to a temporary table in Postgres
 * Move the data from the temporary to the requests table
 * Update views and vacuum the database
-* Write some metadata about the load
+* Write some metadata about the load (and options post to Slack)
 
 ## To-dos/Next steps
 
-* Add Slack message on completion
+* Clear API Redis cache when complete
 * Clean out old CSV files (?)
 * Create better mocks for tests
+* Configure the views to refresh during load
 
 ## Socrata
 
@@ -76,6 +77,16 @@ export PREFECT__CONTEXT__SECRETS__DSN=postgresql://{USER}:{PASSWORD}@{HOST}:{POR
 python flow.py
 ```
 
+## Enabling Slack notifications
+
+The flow supports sending a final status notification to Slack. To configure this, simply add your Slack webhook URL
+to the configuration secrets like you did for the DSN. (Note: this needs to be treated as a secret since Slack webhooks
+are otherwise not authenticated.)
+
+```bash
+PREFECT__CONTEXT__SECRETS__SLACK_HOOK=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+```
+
 ## Configuration
 
 Configuration is done via a TOML file called config.toml in the project root. This uses the Prefect mechanism for [configuration](https://docs.prefect.io/core/concepts/configuration.html#toml). The Prefect default is to look for this file in the USER home directory so a special environment variable (PREFECT__USER_CONFIG_PATH) needs to be set in order to discover this in the project root.
@@ -123,4 +134,17 @@ To clear out the Redis cache of an existing API instance:
 
 ```bash
 curl -X POST "http://localhost:5000/status/reset-cache" -H  "accept: application/json" -d ""
+```
+
+### Docker commands
+
+```bash
+# build the image
+docker build . -t prefectpoc:latest
+# login to GitHub packages
+cat ~/GH_TOKEN.txt | docker login docker.pkg.github.com -u mattyweb --password-stdin
+# tag the package
+docker tag 0a44395490cc docker.pkg.github.com/mattyweb/prefect-poc/prefectpoc:latest
+# push the package to GitHub packages
+docker push docker.pkg.github.com/mattyweb/prefect-poc/prefectpoc:latest
 ```

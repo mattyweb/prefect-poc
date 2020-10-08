@@ -1,10 +1,9 @@
 import requests
 
 import prefect
-from prefect.utilities.tasks import task
-
 
 api_server = prefect.config.api.server
+
 
 def reset_api_cache():
     api_server = prefect.config.api.server

@@ -7,7 +7,6 @@ from sodapy import Socrata
 import prefect
 from prefect.utilities.tasks import task
 
-
 """
 This task will call Socrata and output the returned data in CSV format.
 
@@ -19,15 +18,16 @@ More information about how to use SoQL (the Socrata query language) is here:
 
 """
 
+
 @task(max_retries=3, retry_delay=timedelta(seconds=10))
 def download_dataset(
         dataset,
         since: datetime = None,
         max_rows: int = 2000000,
         batch_size: int = 100000
-    ):
-   
-    # config for run 
+):
+
+    # config for run
     logger = prefect.context.get("logger")
     fieldnames = list(prefect.config.data.fields.keys())
     mode = prefect.config.mode
@@ -41,7 +41,7 @@ def download_dataset(
         where = None
         output_file = f"output/{dataset}-{mode}.csv"
     else:
-        where = None if since is None else f"updateddate > '{since.isoformat()}'"    
+        where = None if since is None else f"updateddate > '{since.isoformat()}'"
         output_file = f"output/{dataset}-{mode}-{prefect.context.today}.csv"
 
     # create Socrata client
@@ -56,7 +56,7 @@ def download_dataset(
     while offset < max_rows:
         limit = min(batch_size, max_rows - offset)
         logger.info(f'Fetching {limit} rows with offset {offset}')
-        
+
         try:
             rows = client.get(
                 dataset,
@@ -78,7 +78,7 @@ def download_dataset(
 
                 # append batch to CSV file
                 with open(output_file, "a") as fd:
-                    writer = csv.DictWriter(fd, fieldnames)   
+                    writer = csv.DictWriter(fd, fieldnames)
                     writer.writerows(rows)
 
                 offset += len(rows)
@@ -87,7 +87,7 @@ def download_dataset(
                 break
 
         except requests.exceptions.ReadTimeout:
-            logger.warn(f'Read timeout occurred during fetch. Continuing...')
+            logger.warn('Read timeout occurred during fetch. Continuing...')
 
     # wrap up
     logger.info(f'{offset:,} total rows downloaded for dataset: {dataset}')
