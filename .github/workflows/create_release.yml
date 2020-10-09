@@ -2,7 +2,7 @@ name: Create Release
 on:
   push:
     # Sequence of patterns matched against refs/tags
-    tags:
+    branch:
       - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10    
 jobs:
   build:
@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Branch name
+        run: echo running on branch ${GITHUB_REF##*/}
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -22,3 +24,5 @@ jobs:
           body_path: docs/release_notes.md
           draft: false
           prerelease: false
+      # - name: Build
+      #   run: docker build -t tedmiston/tag-example:${GITHUB_REF##*/} .
