@@ -12,9 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Branch name
-        uses: nelonoel/branch-name@v1
-      - run: echo ${BRANCH_NAME}
-        # run: echo running on branch ${GITHUB_REF##*/}
+        run: echo "BRANCH_NAME=${GITHUB_REF##*/}"" >> $GITHUB_ENV
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
