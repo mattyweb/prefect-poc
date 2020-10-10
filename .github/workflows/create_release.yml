@@ -55,10 +55,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
           repository: mattyweb/prefect-poc/prefectpoc
-          tags: |
-            prefect-poc:latest
-            prefect-poc:${{ env.BRANCH_NAME }}
-            
+          tags: latest
+
       # - name: Build
       #   run: docker build -t tedmiston/tag-example:${GITHUB_REF##*/} .
       # docker pull docker.pkg.github.com/mattyweb/prefect-poc/prefectpoc:latest
