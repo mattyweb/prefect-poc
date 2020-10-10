@@ -12,15 +12,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Branch name
-        run: echo running on branch ${GITHUB_REF##*/}
+        uses: nelonoel/branch-name@v1
+        run: echo ${BRANCH_NAME}
+        # run: echo running on branch ${GITHUB_REF##*/}
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: ${{ GITHUB_REF##*/ }}
-          release_name: Release ${{ GITHUB_REF##*/ }}
+          tag_name: ${{ BRANCH_NAME }}
+          release_name: Release ${{ BRANCH_NAME }}
           body_path: docs/release_notes.md
           draft: false
           prerelease: false
