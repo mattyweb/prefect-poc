@@ -19,18 +19,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ GITHUB_REF##*/ }}
+          release_name: Release ${{ GITHUB_REF##*/ }}
           body_path: docs/release_notes.md
           draft: false
           prerelease: false
       - name: Push to GitHub Packages
-        uses: docker/build-push-action@v1
+        uses: docker/build-push-action@v2
         with:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
-          repository: mattyweb/prefectpoc/ingestor-311data
+          repository: mattyweb/prefectpoc/311data
           tag_with_ref: true
       # - name: Build
       #   run: docker build -t tedmiston/tag-example:${GITHUB_REF##*/} .
