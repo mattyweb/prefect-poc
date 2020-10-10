@@ -24,13 +24,31 @@ jobs:
           body_path: docs/release_notes.md
           draft: false
           prerelease: false
-      - name: Push to GitHub Packages
-        uses: docker/build-push-action@v1
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1 
         with:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: docker.pkg.github.com
-          repository: mattyweb/prefect-poc/prefectpoc:latest
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.CR_PAT }}
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            mattyweb/prefect-poc:latest
+            mattyweb/prefect-poc:$BRANCH_NAME
+            ghcr.io/mattyweb/prefect-poc:latest
+            ghcr.io/mattyweb/prefect-poc:$BRANCH_NAME
+
+      # - name: Push to GitHub Packages
+      #   uses: docker/build-push-action@v1
+      #   with:
+      #     username: ${{ github.actor }}
+      #     password: ${{ secrets.GITHUB_TOKEN }}
+      #     registry: docker.pkg.github.com
+      #     repository: mattyweb/prefect-poc/prefectpoc:latest
       # - name: Build
       #   run: docker build -t tedmiston/tag-example:${GITHUB_REF##*/} .
       # docker pull docker.pkg.github.com/mattyweb/prefect-poc/prefectpoc:latest
