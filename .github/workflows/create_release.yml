@@ -38,9 +38,9 @@ jobs:
           push: true
           tags: |
             mattyweb/prefect-poc:latest
-            mattyweb/prefect-poc:${BRANCH_NAME}
+            mattyweb/prefect-poc:${{ env.BRANCH_NAME }}
             ghcr.io/mattyweb/prefect-poc:latest
-            ghcr.io/mattyweb/prefect-poc:${BRANCH_NAME}
+            ghcr.io/mattyweb/prefect-poc:${{ env.BRANCH_NAME }}
 
       # - name: Push to GitHub Packages
       #   uses: docker/build-push-action@v1
