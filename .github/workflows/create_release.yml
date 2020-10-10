@@ -19,8 +19,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
         with:
-          tag_name: ${{ BRANCH_NAME }}
-          release_name: Release ${{ BRANCH_NAME }}
+          tag_name: ${{ env.BRANCH_NAME }}
+          release_name: Release ${{ env.BRANCH_NAME }}
           body_path: docs/release_notes.md
           draft: false
           prerelease: false
